@@ -3,156 +3,92 @@ import pandas as pd
 import uuid
 from streamlit_gsheets import GSheetsConnection
 
-# =========================
-# Page
-# =========================
+# ======================
+# 初始化
+# ======================
 st.set_page_config(layout="wide")
-st.title("階段四：Trello + Google Sheets 穩定版")
+st.title("🔥 Trello 看板（卡片內編輯/刪除版）")
 
-# =========================
-# 連線
-# =========================
 conn = st.connection("gsheets", type=GSheetsConnection)
-
-# ⚠️ 每次都抓最新（避免舊資料）
 df = conn.read(worksheet="Tasks", ttl=0)
 
-# =========================
-# ID 保護（刪除必備）
-# =========================
+# ID 保護
 if "id" not in df.columns:
     df["id"] = [str(uuid.uuid4()) for _ in range(len(df))]
 
-# =========================
-# 新增任務
-# =========================
-st.write("### 🧠 指派新任務")
-
-with st.form("task_form", clear_on_submit=True):
-    c1, c2, c3 = st.columns([2, 1, 1])
-
-    with c1:
-        new_title = st.text_input("任務名稱")
-
-    with c2:
-        new_status = st.selectbox("狀態", ["To Do", "In Progress", "Done"])
-
-    with c3:
-        new_owner = st.text_input("負責人")
-
-    submit = st.form_submit_button("新增任務")
-
-if submit and new_title and new_owner:
-
-    new_row = pd.DataFrame([{
-        "id": str(uuid.uuid4()),
-        "title": new_title,
-        "status": new_status,
-        "owner": new_owner
-    }])
-
-    updated_df = pd.concat([df, new_row], ignore_index=True)
-
-    conn.update(worksheet="Tasks", data=updated_df)
-
-    st.success("已新增任務")
-    st.cache_data.clear()
-    st.rerun()
-
-st.write("---")
-
-# =========================
-# 任務表（可編輯）
-# =========================
-st.write("### ✏️ 任務即時編輯（可改狀態）")
-
-edited_df = st.data_editor(
-    df,
-    num_rows="dynamic",
-    use_container_width=True,
-    column_config={
-        "status": st.column_config.SelectboxColumn(
-            "status",
-            options=["To Do", "In Progress", "Done"]
-        )
-    }
-)
-
-if st.button("💾 儲存所有修改"):
-    conn.update(worksheet="Tasks", data=edited_df)
-    st.success("已同步更新")
-    st.cache_data.clear()
-    st.rerun()
-
-st.write("---")
-
-# =========================
-# 刪除任務
-# =========================
-st.write("### 🗑️ 刪除任務")
-
-delete_ids = st.multiselect(
-    "選擇要刪除的任務",
-    df["id"],
-    format_func=lambda x: df[df["id"] == x]["title"].values[0]
-)
-
-if st.button("刪除選取任務"):
-    df = df[~df["id"].isin(delete_ids)]
-
+# ======================
+# 更新函數
+# ======================
+def save(df):
     conn.update(worksheet="Tasks", data=df)
-
-    st.success("已刪除")
     st.cache_data.clear()
     st.rerun()
 
-st.write("---")
+# ======================
+# 卡片編輯 Dialog
+# ======================
+@st.dialog("✏️ 編輯任務")
+def edit_task(task_id):
+    task = df[df["id"] == task_id].iloc[0]
 
-# =========================
-# Trello 看板
-# =========================
-st.write("### 📊 Trello 看板")
+    new_title = st.text_input("任務名稱", task["title"])
+    new_owner = st.text_input("負責人", task["owner"])
+    new_status = st.selectbox(
+        "狀態",
+        ["To Do", "In Progress", "Done"],
+        index=["To Do", "In Progress", "Done"].index(task["status"])
+    )
 
+    if st.button("💾 儲存修改"):
+        df.loc[df["id"] == task_id, "title"] = new_title
+        df.loc[df["id"] == task_id, "owner"] = new_owner
+        df.loc[df["id"] == task_id, "status"] = new_status
+
+        save(df)
+
+# ======================
+# 刪除函數
+# ======================
+def delete_task(task_id):
+    global df
+    df = df[df["id"] != task_id]
+    save(df)
+
+# ======================
+# 看板
+# ======================
 col1, col2, col3 = st.columns(3)
 
-# -------- To Do --------
-with col1:
-    st.markdown("### 🔴 To Do")
+def render_column(status, col, color):
+    with col:
+        st.markdown(f"### {color} {status}")
 
-    todo = df[df["status"] == "To Do"]
+        tasks = df[df["status"] == status]
 
-    if not todo.empty:
-        for _, row in todo.iterrows():
+        if tasks.empty:
+            st.info("無任務")
+            return
+
+        for _, row in tasks.iterrows():
+
             with st.container(border=True):
+
                 st.write(f"**{row['title']}**")
                 st.caption(f"👤 {row['owner']}")
-    else:
-        st.info("無任務")
 
-# -------- In Progress --------
-with col2:
-    st.markdown("### 🟠 In Progress")
+                c1, c2 = st.columns(2)
 
-    ip = df[df["status"] == "In Progress"]
+                # ✏️ 編輯
+                with c1:
+                    if st.button("✏️", key=f"edit_{row['id']}"):
+                        edit_task(row["id"])
 
-    if not ip.empty:
-        for _, row in ip.iterrows():
-            with st.container(border=True):
-                st.write(f"**{row['title']}**")
-                st.caption(f"👤 {row['owner']}")
-    else:
-        st.info("無任務")
+                # 🗑 刪除
+                with c2:
+                    if st.button("🗑", key=f"del_{row['id']}"):
+                        delete_task(row["id"])
 
-# -------- Done --------
-with col3:
-    st.markdown("### 🟢 Done")
-
-    done = df[df["status"] == "Done"]
-
-    if not done.empty:
-        for _, row in done.iterrows():
-            with st.container(border=True):
-                st.write(f"~~**" + row['title'] + "**~~")
-                st.caption(f"👤 {row['owner']}")
-    else:
-        st.info("無任務")
+# 三欄
+render_column("To Do", col1, "🔴")
+render_column("In Progress", col2, "🟠")
+render_column("Done", col3, "🟢")
