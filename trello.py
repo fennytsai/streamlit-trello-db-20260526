@@ -157,155 +157,157 @@ for idx, row in todo_df.iterrows():
 
 
 
+import uuid
+# =========================
+# Page
+# =========================
 st.set_page_config(layout="wide")
+st.title("階段四：Trello + Google Sheets 穩定版")
 
-st.title(" 階段四終極完成版：GitHub 雲端同步 Trello 看板")
-
+# =========================
+# 連線
+# =========================
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-df = conn.read(worksheet="Tasks", ttl="0")
+# ⚠️ 每次都抓最新（避免舊資料）
+df = conn.read(worksheet="Tasks", ttl=0)
 
-# ==========================================
+# =========================
+# ID 保護（刪除必備）
+# =========================
+if "id" not in df.columns:
+    df["id"] = [str(uuid.uuid4()) for _ in range(len(df))]
 
-#  區塊一：上方新增任務輸入表單
+# =========================
+# 新增任務
+# =========================
+st.write("### 🧠 指派新任務")
 
-# ==========================================
+with st.form("task_form", clear_on_submit=True):
+    c1, c2, c3 = st.columns([2, 1, 1])
 
-st.write("###  指派新任務")
+    with c1:
+        new_title = st.text_input("任務名稱")
 
-with st.form("task_input_form", clear_on_submit=True):
+    with c2:
+        new_status = st.selectbox("狀態", ["To Do", "In Progress", "Done"])
 
-    c_title, c_status, c_owner = st.columns([2, 1, 1]) # 運用權重比例切分表單
+    with c3:
+        new_owner = st.text_input("負責人")
 
-    with c_title:
+    submit = st.form_submit_button("新增任務")
 
-        new_title = st.text_input(" 任務名稱", placeholder="輸入任務名稱...")
+if submit and new_title and new_owner:
 
-    with c_status:
-
-        new_status = st.selectbox(" 狀態", ["To Do", "In Progress", "Done"])
-
-    with c_owner:
-
-        new_owner = st.text_input(" 負責人", placeholder="誰來負責...")
-
-    
-
-    submit_btn = st.form_submit_button("確認指派並同步雲端")
-
-if submit_btn and new_title and new_owner:
-
-    new_data = {"title": new_title, "status": new_status, "owner": new_owner}
-
-    new_row = pd.DataFrame([new_data])
-
-    #  核心安全：新版 Python 廢棄 .append()，在雲端必須改用 pd.concat() 進行表格拼接
+    new_row = pd.DataFrame([{
+        "id": str(uuid.uuid4()),
+        "title": new_title,
+        "status": new_status,
+        "owner": new_owner
+    }])
 
     updated_df = pd.concat([df, new_row], ignore_index=True)
 
     conn.update(worksheet="Tasks", data=updated_df)
 
-    st.success(" 資料已跨越限制，成功同步寫入 Google 試算表！")
-
-    st.rerun() # 強制網頁自我重整，重新讀取，讓新卡片亮起來
+    st.success("已新增任務")
+    st.cache_data.clear()
+    st.rerun()
 
 st.write("---")
 
-# ==========================================
+# =========================
+# 任務表（可編輯）
+# =========================
+st.write("### ✏️ 任務即時編輯（可改狀態）")
 
-#  區塊二：下方 Trello 三縱欄畫布與卡片渲染
-
-# ==========================================
-# ==========================================
-# 區塊二：下方 Trello 三縱欄畫布與卡片渲染
-# ==========================================
-
-st.write("### 📋 看板動態狀態監控")
-
-trello_col1, trello_col2, trello_col3 = st.columns(3)
-
-status_map = {
-    "To Do": trello_col1,
-    "In Progress": trello_col2,
-    "Done": trello_col3
-}
-
-color_map = {
-    "To Do": "red",
-    "In Progress": "orange",
-    "Done": "green"
-}
-
-for status, column in status_map.items():
-
-    with column:
-
-        st.markdown(
-            f"### <span style='color:{color_map[status]}'>{status}</span>",
-            unsafe_allow_html=True
+edited_df = st.data_editor(
+    df,
+    num_rows="dynamic",
+    use_container_width=True,
+    column_config={
+        "status": st.column_config.SelectboxColumn(
+            "status",
+            options=["To Do", "In Progress", "Done"]
         )
+    }
+)
 
-        task_list = df[df["status"] == status]
+if st.button("💾 儲存所有修改"):
+    conn.update(worksheet="Tasks", data=edited_df)
+    st.success("已同步更新")
+    st.cache_data.clear()
+    st.rerun()
 
-        if not task_list.empty:
+st.write("---")
 
-            for idx, row in task_list.iterrows():
+# =========================
+# 刪除任務
+# =========================
+st.write("### 🗑️ 刪除任務")
 
-                with st.container(border=True):
+delete_ids = st.multiselect(
+    "選擇要刪除的任務",
+    df["id"],
+    format_func=lambda x: df[df["id"] == x]["title"].values[0]
+)
 
-                    st.write(f"### {row['title']}")
-                    st.caption(f"負責人：{row['owner']}")
+if st.button("刪除選取任務"):
+    df = df[~df["id"].isin(delete_ids)]
 
-                    # ==================================
-                    # 狀態修改區
-                    # ==================================
+    conn.update(worksheet="Tasks", data=df)
 
-                    new_status = st.selectbox(
-                        "修改狀態",
-                        ["To Do", "In Progress", "Done"],
-                        index=["To Do", "In Progress", "Done"].index(row["status"]),
-                        key=f"status_{idx}"
-                    )
+    st.success("已刪除")
+    st.cache_data.clear()
+    st.rerun()
 
-                    # 如果狀態被修改
-                    if new_status != row["status"]:
+st.write("---")
 
-                        df.at[idx, "status"] = new_status
+# =========================
+# Trello 看板
+# =========================
+st.write("### 📊 Trello 看板")
 
-                        conn.update(
-                            worksheet="Tasks",
-                            data=df
-                        )
+col1, col2, col3 = st.columns(3)
 
-                        st.success("任務狀態已更新！")
+# -------- To Do --------
+with col1:
+    st.markdown("### 🔴 To Do")
 
-                        st.rerun()
+    todo = df[df["status"] == "To Do"]
 
-                    # ==================================
-                    # 刪除按鈕
-                    # ==================================
+    if not todo.empty:
+        for _, row in todo.iterrows():
+            with st.container(border=True):
+                st.write(f"**{row['title']}**")
+                st.caption(f"👤 {row['owner']}")
+    else:
+        st.info("無任務")
 
-                    if st.button(
-                        "🗑️ 刪除任務",
-                        key=f"delete_{idx}"
-                    ):
+# -------- In Progress --------
+with col2:
+    st.markdown("### 🟠 In Progress")
 
-                        # 刪除該列
-                        df = df.drop(idx)
+    ip = df[df["status"] == "In Progress"]
 
-                        # 重新整理 index
-                        df = df.reset_index(drop=True)
+    if not ip.empty:
+        for _, row in ip.iterrows():
+            with st.container(border=True):
+                st.write(f"**{row['title']}**")
+                st.caption(f"👤 {row['owner']}")
+    else:
+        st.info("無任務")
 
-                        # 同步回 Google Sheets
-                        conn.update(
-                            worksheet="Tasks",
-                            data=df
-                        )
+# -------- Done --------
+with col3:
+    st.markdown("### 🟢 Done")
 
-                        st.warning("任務已刪除")
+    done = df[df["status"] == "Done"]
 
-                        st.rerun()
-
-        else:
-
-            st.info(f"目前沒有 {status} 任務")
+    if not done.empty:
+        for _, row in done.iterrows():
+            with st.container(border=True):
+                st.write(f"~~**" + row['title'] + "**~~")
+                st.caption(f"👤 {row['owner']}")
+    else:
+        st.info("無任務")
