@@ -216,6 +216,7 @@ st.write("---")
 #  區塊二：下方 Trello 三縱欄畫布與卡片渲染
 
 # ==========================================
+# ==========================================
 # 區塊二：下方 Trello 三縱欄畫布與卡片渲染
 # ==========================================
 
@@ -283,29 +284,26 @@ for status, column in status_map.items():
                     # ==================================
                     # 刪除按鈕
                     # ==================================
-                    
+
                     if st.button(
                         "🗑️ 刪除任務",
                         key=f"delete_{idx}"
                     ):
-                    
-                        # 刪除
-                        df = df.drop(index=idx)
-                    
-                        # 重建 index
+
+                        # 刪除該列
+                        df = df.drop(idx)
+
+                        # 重新整理 index
                         df = df.reset_index(drop=True)
-                    
-                        # 避免 NaN
-                        df = df.fillna("")
-                    
-                        # 同步 Google Sheet
+
+                        # 同步回 Google Sheets
                         conn.update(
                             worksheet="Tasks",
                             data=df
                         )
-                    
+
                         st.warning("任務已刪除")
-                    
+
                         st.rerun()
 
         else:
