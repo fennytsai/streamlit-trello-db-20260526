@@ -74,7 +74,6 @@ st.set_page_config(layout="wide")
 
 st.title(" 階段三：外星文濾網分流與空間歸隊測試") 
 
-st.caption("授權標註：edit by 闕河正")
 
 conn = st.connection("gsheets", type=GSheetsConnection) 
 
@@ -91,7 +90,7 @@ with col1:
     #  內層做濾網，外層做篩選：只抓出狀態為 To Do 的小表格 
 
     todo_df = df[df["status"] == "To Do"] # 把它印在左邊這欄
-st.dataframe(todo_df)
+    st.dataframe(todo_df)
 
 with col2: 
 
