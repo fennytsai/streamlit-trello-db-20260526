@@ -283,8 +283,8 @@ for status, column in status_map.items():
                     # ==================================
                     # 刪除按鈕
                     # ==================================
-
-                   if st.button(
+                    
+                    if st.button(
                         "🗑️ 刪除任務",
                         key=f"delete_{idx}"
                     ):
@@ -295,10 +295,10 @@ for status, column in status_map.items():
                         # 重建 index
                         df = df.reset_index(drop=True)
                     
-                        # 非常重要：避免 NaN
+                        # 避免 NaN
                         df = df.fillna("")
                     
-                        # 更新 Google Sheet
+                        # 同步 Google Sheet
                         conn.update(
                             worksheet="Tasks",
                             data=df
