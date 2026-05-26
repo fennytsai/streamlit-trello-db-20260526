@@ -82,7 +82,7 @@ df = conn.read(worksheet="Tasks", ttl="0")
 
 st.write("---")
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1: 
 
@@ -110,6 +110,16 @@ with col3:
     #  只抓出狀態為 Done 的小表格 
 
     done_df = df[df["status"] == "Done"] 
+
+    st.dataframe(done_df)
+    
+with col4: 
+
+    st.markdown("###  Remark") 
+
+    #  只抓出狀態為 Remark 的小表格 
+
+    done_df = df[df["status"] == "Remark"] 
 
     st.dataframe(done_df)
 
